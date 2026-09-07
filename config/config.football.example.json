@@ -1,0 +1,54 @@
+{
+  "outputFile": "./output/football-report.xlsx",
+  "projects": [
+    {
+      "name": "football-report",
+      "sources": [
+        {
+          "id": "la-liga",
+          "sheetName": "LaLiga",
+          "type": "http",
+          "enabled": true,
+          "config": {
+            "url": "https://api.football-data.org/v4/competitions/PD/matches",
+            "method": "GET",
+            "apiKeyEnv": "FOOTBALL_DATA_API_KEY",
+            "apiKeyHeader": "X-Auth-Token",
+            "fieldMapping": {
+              "rowsPath": "$.matches",
+              "competition": "$.competition.name",
+              "matchDate": "$.utcDate",
+              "homeTeam": "$.homeTeam.name",
+              "awayTeam": "$.awayTeam.name",
+              "homeScore": "$.score.fullTime.home",
+              "awayScore": "$.score.fullTime.away",
+              "status": "$.status"
+            }
+          }
+        },
+        {
+          "id": "liga-pro",
+          "sheetName": "LigaPro",
+          "type": "http",
+          "enabled": true,
+          "config": {
+            "url": "https://api.example.com/ligapro/fixtures",
+            "method": "GET",
+            "apiKeyEnv": "LIGA_PRO_API_KEY",
+            "apiKeyHeader": "Authorization",
+            "fieldMapping": {
+              "rowsPath": "$.data.fixtures",
+              "competition": "$.league.name",
+              "matchDate": "$.fixture.date",
+              "homeTeam": "$.teams.home.name",
+              "awayTeam": "$.teams.away.name",
+              "homeScore": "$.goals.home",
+              "awayScore": "$.goals.away",
+              "status": "$.fixture.status.short"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

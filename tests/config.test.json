@@ -1,0 +1,20 @@
+{
+  "outputFile": "./output/test-report.xlsx",
+  "projects": [
+    {
+      "name": "test-project",
+      "sources": [
+        {
+          "id": "test-file",
+          "sheetName": "TestData",
+          "type": "file",
+          "enabled": true,
+          "config": {
+            "path": "./tests/sample-data.json",
+            "format": "json"
+          }
+        }
+      ]
+    }
+  ]
+}

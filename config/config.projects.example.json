@@ -1,0 +1,63 @@
+{
+  "outputFile": "./output/project-report.xlsx",
+  "projects": [
+    {
+      "name": "proyecto-prueba",
+      "sources": [
+        {
+          "id": "vulnerabilities",
+          "sheetName": "Vulnerabilidades",
+          "type": "npm-audit",
+          "enabled": true,
+          "config": {
+            "pathProject": "/Users/jonathan.navas/Documents/pruebas/my-next-app",
+            "branch": "develop_v2",
+            "timeToCompare": "6 months"
+          }
+        },
+        {
+          "id": "code-quality",
+          "sheetName": "SonarQube",
+          "type": "sonarqube",
+          "enabled": true,
+          "config": {
+            "apiKeyEnv": "SONARQUBE_API_KEY",
+            "baseUrl": "https://sonarqube.example.com",
+            "projectKey": "my-next-app",
+            "branch": "develop_v2",
+            "metrics": [
+              "coverage",
+              "bugs",
+              "vulnerabilities",
+              "code_smells",
+              "duplicated_lines_density"
+            ]
+          }
+        },
+        {
+          "id": "uptime",
+          "sheetName": "UptimeRobot",
+          "type": "uptime-robot",
+          "enabled": true,
+          "config": {
+            "apiKeyEnv": "UPTIME_ROBOT_API_KEY",
+            "projectName": "Project Name"
+          }
+        },
+        {
+          "id": "jira",
+          "sheetName": "Jira",
+          "type": "jira",
+          "enabled": true,
+          "config": {
+            "apiKeyEnv": "JIRA_API_TOKEN",
+            "emailEnv": "JIRA_EMAIL",
+            "baseUrlEnv": "JIRA_URL",
+            "projectName": "Project Name",
+            "jql": "project = 'Project Name' AND status != Done ORDER BY created DESC"
+          }
+        }
+      ]
+    }
+  ]
+}
