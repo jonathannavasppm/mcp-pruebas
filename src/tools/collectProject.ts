@@ -1,27 +1,136 @@
 import type { ToolResponse } from "../types.js"
-import type { AppConfigOutput } from "../config/schema.js"
+import type {
+  AppConfigOutput,
+  ProjectConfigOutput,
+  SourceConfigOutput,
+} from "../config/schema.js"
 import { collectProject as collectProjectData } from "../services/dataCollector.js"
 import { writeResultsToExcel } from "../services/excelWriter.js"
 import { resolveValidatedPath } from "../utils/pathResolver.js"
-import { BranchMismatchError } from "../utils/errors.js"
+import { BranchMismatchError, McpAppError } from "../utils/errors.js"
 import { appendFarewell } from "../utils/farewell.js"
 import { handleBranchMismatch } from "./handleBranchMismatch.js"
 import { sanitizeObject } from "../services/sanitizer.js"
+import {
+  hasProjectsEnvOverride,
+  resolveProjectFromEnv,
+  resolveProjectsFromEnv,
+} from "./projectResolver.js"
+
+type CollectProjectArgs = {
+  projectName: string
+  projectPath?: string
+  projectBranch?: string
+  timeToCompare?: string
+  outputFile?: string
+}
+
+function applySourceOverrides(
+  source: SourceConfigOutput,
+  args: CollectProjectArgs
+): SourceConfigOutput {
+  if (source.type !== "npm-audit") return source
+
+  const updatedConfig: Record<string, unknown> = { ...source.config }
+
+  if (args.projectPath) {
+    updatedConfig.pathProject = args.projectPath
+  }
+  if (args.projectBranch) {
+    updatedConfig.branch = args.projectBranch
+  }
+  if (args.timeToCompare) {
+    updatedConfig.timeToCompare = args.timeToCompare
+  }
+
+  return {
+    ...source,
+    config: updatedConfig,
+  }
+}
+
+function applyProjectOverrides(
+  project: ProjectConfigOutput,
+  args: CollectProjectArgs
+): ProjectConfigOutput {
+  if (!args.projectPath && !args.projectBranch && !args.timeToCompare) {
+    return project
+  }
+
+  return {
+    ...project,
+    sources: project.sources.map((source) =>
+      applySourceOverrides(source, args)
+    ),
+  }
+}
+
+function buildProjectForCollection(
+  args: CollectProjectArgs,
+  config: AppConfigOutput
+): ProjectConfigOutput {
+  if (hasProjectsEnvOverride()) {
+    const envProject = resolveProjectFromEnv(args.projectName)
+    if (envProject) {
+      return applyProjectOverrides(envProject, args)
+    }
+
+    throw new McpAppError(
+      `Project "${args.projectName}" not found in PROJECTS environment variable. Available projects: ${resolveProjectsFromEnv(
+        []
+      )
+        .map((p) => p.name)
+        .join(", ")}.`
+    )
+  }
+
+  const existingProject = config.projects.find(
+    (p) => p.name === args.projectName
+  )
+
+  if (existingProject) {
+    return applyProjectOverrides(existingProject, args)
+  }
+
+  if (!args.projectPath) {
+    throw new McpAppError(
+      `Project "${args.projectName}" not found in configuration. Provide "projectPath" to analyze it dynamically.`
+    )
+  }
+
+  return {
+    name: args.projectName,
+    sources: [
+      {
+        id: "vulnerabilities",
+        sheetName: "Vulnerabilidades",
+        type: "npm-audit",
+        enabled: true,
+        config: {
+          pathProject: args.projectPath,
+          branch: args.projectBranch || "main",
+          timeToCompare: args.timeToCompare || "6 months",
+        },
+      },
+    ],
+  }
+}
 
 export async function collectProject(
-  args: { projectName: string; outputFile?: string },
+  args: CollectProjectArgs,
   config: AppConfigOutput,
   ctx: { mcpReq?: { elicitInput?: (params: unknown) => Promise<unknown> } }
 ): Promise<ToolResponse> {
-  const project = config.projects.find((p) => p.name === args.projectName)
-  if (!project) {
+  let project: ProjectConfigOutput
+  try {
+    project = buildProjectForCollection(args, config)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error"
     return {
       content: [
         {
           type: "text",
-          text: appendFarewell(
-            `Project "${args.projectName}" not found in configuration.`
-          ),
+          text: appendFarewell(message),
         },
       ],
       isError: true,

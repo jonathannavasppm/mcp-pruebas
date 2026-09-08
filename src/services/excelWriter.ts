@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs"
+import { mkdir } from "node:fs/promises"
+import { dirname } from "node:path"
 import ExcelJS from "exceljs"
 import type { CollectedResult, ExcelSummary, RowData } from "../types.js"
 import { logger } from "../utils/logger.js"
@@ -8,6 +10,16 @@ export async function writeResultsToExcel(
   filePath: string,
   results: CollectedResult[]
 ): Promise<ExcelSummary> {
+  try {
+    await mkdir(dirname(filePath), { recursive: true })
+  } catch (error) {
+    throw new McpAppError(
+      `Failed to create output directory for "${filePath}": ${
+        error instanceof Error ? error.message : "unknown error"
+      }`
+    )
+  }
+
   const workbook = existsSync(filePath)
     ? await loadWorkbook(filePath)
     : new ExcelJS.Workbook()

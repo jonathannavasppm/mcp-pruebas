@@ -39,7 +39,14 @@ interface PackageJson {
 }
 
 interface PackageLock {
+  lockfileVersion?: number
   packages?: Record<string, { version?: string }>
+  dependencies?: Record<string, PackageLockEntry>
+}
+
+interface PackageLockEntry {
+  version?: string
+  dependencies?: Record<string, PackageLockEntry>
 }
 
 interface NpmRegistryTime {
@@ -89,14 +96,19 @@ export class NpmAuditConnector implements Connector {
 
     logger.info(
       { sourceId: ctx.sourceId, projectPath },
-      "Running npm audit and npm outdated"
+      "Starting vulnerability analysis"
     )
 
-    const [auditResult, outdatedResult] = await Promise.all([
-      this.runNpmAudit(projectPath),
-      this.runNpmOutdated(projectPath),
-    ])
+    logger.info({ sourceId: ctx.sourceId, projectPath }, "Running npm audit")
+    const auditResult = await this.runNpmAudit(projectPath)
 
+    logger.info({ sourceId: ctx.sourceId, projectPath }, "Running npm outdated")
+    const outdatedResult = await this.runNpmOutdated(projectPath)
+
+    logger.info(
+      { sourceId: ctx.sourceId, projectPath },
+      "Reading package.json and installed versions"
+    )
     const packageJson = this.readPackageJson(projectPath)
     const installedVersions = this.readInstalledVersions(projectPath)
     const vulnerablePackages = this.extractVulnerablePackages(auditResult)
@@ -107,19 +119,31 @@ export class NpmAuditConnector implements Connector {
       vulnerablePackages
     )
 
+    logger.info(
+      { sourceId: ctx.sourceId, packageCount: packageNames.length },
+      "Fetching registry metadata for packages"
+    )
+
     const rows: DependencyRow[] = []
 
     for (const packageName of packageNames) {
+      logger.info({ sourceId: ctx.sourceId, packageName }, "Processing package")
       const row = await this.buildDependencyRow(
         packageName,
         packageJson,
         installedVersions,
+        projectPath,
         outdatedResult[packageName],
         vulnerablePackages[packageName],
         cfg.timeToCompare || "6 months"
       )
       rows.push(row)
     }
+
+    logger.info(
+      { sourceId: ctx.sourceId, rowCount: rows.length },
+      "Vulnerability analysis completed"
+    )
 
     return rows
   }
@@ -203,23 +227,62 @@ export class NpmAuditConnector implements Connector {
 
   private readInstalledVersions(projectPath: string): Record<string, string> {
     const lockPath = join(projectPath, "package-lock.json")
+    const versions: Record<string, string> = {}
+
     try {
       const content = readFileSync(lockPath, "utf-8")
       const lock = JSON.parse(content) as PackageLock
-      const versions: Record<string, string> = {}
-      const packages = lock.packages || {}
 
-      for (const [lockPathKey, pkg] of Object.entries(packages)) {
-        if (!lockPathKey.startsWith("node_modules/")) continue
-        const packageName = lockPathKey.replace("node_modules/", "")
-        if (pkg.version) {
-          versions[packageName] = pkg.version
+      if (lock.packages) {
+        for (const [lockPathKey, pkg] of Object.entries(lock.packages)) {
+          if (!lockPathKey.startsWith("node_modules/")) continue
+          const packageName = lockPathKey.replace("node_modules/", "")
+          if (pkg.version) {
+            versions[packageName] = pkg.version
+          }
         }
       }
 
-      return versions
+      if (lock.dependencies) {
+        this.extractVersionsFromLockDeps(lock.dependencies, versions)
+      }
     } catch {
-      return {}
+      // Fall back to reading node_modules if package-lock cannot be parsed
+    }
+
+    return versions
+  }
+
+  private readVersionFromNodeModules(
+    projectPath: string,
+    packageName: string
+  ): string | null {
+    try {
+      const pkgPath = join(
+        projectPath,
+        "node_modules",
+        packageName,
+        "package.json"
+      )
+      const content = readFileSync(pkgPath, "utf-8")
+      const pkg = JSON.parse(content) as { version?: string }
+      return pkg.version || null
+    } catch {
+      return null
+    }
+  }
+
+  private extractVersionsFromLockDeps(
+    deps: Record<string, PackageLockEntry>,
+    versions: Record<string, string>
+  ): void {
+    for (const [name, entry] of Object.entries(deps)) {
+      if (entry.version && !versions[name]) {
+        versions[name] = entry.version
+      }
+      if (entry.dependencies) {
+        this.extractVersionsFromLockDeps(entry.dependencies, versions)
+      }
     }
   }
 
@@ -271,14 +334,18 @@ export class NpmAuditConnector implements Connector {
     packageName: string,
     packageJson: PackageJson,
     installedVersions: Record<string, string>,
+    projectPath: string,
     outdated: NpmOutdatedOutput[string],
     vulnerability:
       { severity?: string; via?: Array<{ url?: string }> } | undefined,
     timeToCompare: string
   ): Promise<DependencyRow> {
-    const installedVersion =
-      outdated?.current || installedVersions[packageName] || "unknown"
-    const currentVersion = outdated?.wanted || installedVersion
+    const currentVersion =
+      outdated?.wanted ||
+      outdated?.current ||
+      installedVersions[packageName] ||
+      this.readVersionFromNodeModules(projectPath, packageName) ||
+      "unknown"
     const isTopLevel = this.isTopLevelDependency(packageName, packageJson)
     const hasVulnerability = vulnerability !== undefined
 
@@ -302,13 +369,15 @@ export class NpmAuditConnector implements Connector {
       typeof registryInfo?.deprecated === "string" ||
       registryInfo?.deprecated === true
 
-    const severity = vulnerability?.severity
-      ? this.normalizeSeverity(vulnerability.severity)
+    const severity = hasVulnerability
+      ? vulnerability?.severity
+        ? this.normalizeSeverity(vulnerability.severity)
+        : "unknown"
       : null
 
     const maintenanceStatus = this.calculateMaintenanceStatus(
       latestVersion,
-      installedVersion,
+      currentVersion,
       isDeprecated,
       hasVulnerability,
       lastPublishedDate,
@@ -318,10 +387,9 @@ export class NpmAuditConnector implements Connector {
     return {
       packageName,
       dependencyType,
-      installedVersion,
       currentVersion,
       latestVersion,
-      isUpToDate: latestVersion === null || installedVersion === latestVersion,
+      isUpToDate: latestVersion === null || currentVersion === latestVersion,
       isDeprecated,
       hasVulnerabilities: hasVulnerability,
       vulnerabilitySeverity: severity,
@@ -361,13 +429,19 @@ export class NpmAuditConnector implements Connector {
     const registryInfo = await this.fetchRegistryInfo(packageName)
     if (!registryInfo?.time) return null
 
-    const versions = Object.keys(registryInfo.time).filter(
-      (version) => version !== "created" && version !== "modified"
+    const versionDates = Object.entries(registryInfo.time).filter(
+      ([version]) => version !== "created" && version !== "modified"
     )
 
-    if (versions.length === 0) return null
+    if (versionDates.length === 0) return null
 
-    return versions[versions.length - 1]
+    versionDates.sort((a, b) => {
+      const dateA = new Date(a[1]).getTime()
+      const dateB = new Date(b[1]).getTime()
+      return dateB - dateA
+    })
+
+    return versionDates[0][0]
   }
 
   private normalizeSeverity(
@@ -417,7 +491,7 @@ export class NpmAuditConnector implements Connector {
 
   private calculateMaintenanceStatus(
     latestVersion: string | null,
-    installedVersion: string,
+    currentVersion: string,
     isDeprecated: boolean,
     hasVulnerabilities: boolean,
     lastPublishedDate: string | null,
@@ -425,7 +499,7 @@ export class NpmAuditConnector implements Connector {
   ): DependencyRow["maintenanceStatus"] {
     if (isDeprecated) return "deprecated"
     if (hasVulnerabilities) return "outdated"
-    if (latestVersion && installedVersion !== latestVersion) return "outdated"
+    if (latestVersion && currentVersion !== latestVersion) return "outdated"
     if (
       lastPublishedDate &&
       this.isOlderThan(lastPublishedDate, timeToCompare)

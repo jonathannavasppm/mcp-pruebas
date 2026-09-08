@@ -7,6 +7,7 @@ import { BranchMismatchError } from "../utils/errors.js"
 import { appendFarewell } from "../utils/farewell.js"
 import { handleBranchMismatch } from "./handleBranchMismatch.js"
 import { sanitizeObject } from "../services/sanitizer.js"
+import { resolveProjectsFromEnv } from "./projectResolver.js"
 
 export async function collectAllProjects(
   args: { outputFile?: string },
@@ -20,7 +21,9 @@ export async function collectAllProjects(
     []
   const allErrors: string[] = []
 
-  for (const project of config.projects) {
+  const projects = resolveProjectsFromEnv(config.projects)
+
+  for (const project of projects) {
     try {
       const result = await collectProjectData(project)
       allResults.push(...result.results)

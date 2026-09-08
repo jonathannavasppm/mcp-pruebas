@@ -12,7 +12,7 @@ async function main(): Promise<void> {
 
   await server.connect(transport)
 
-  logger.info("MCP server connected via stdio")
+  logger.info("MCP server connected via stdio.......")
 
   const shutdown = async (): Promise<void> => {
     logger.info("Shutting down MCP server...")

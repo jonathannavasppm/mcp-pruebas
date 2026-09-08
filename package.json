@@ -8,6 +8,7 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
+    "start:fresh": "tsc && node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",

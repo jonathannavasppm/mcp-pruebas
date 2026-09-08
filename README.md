@@ -2,7 +2,7 @@
 
 Servidor [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) profesional que recolecta información de múltiples fuentes configurables y la exporta a un archivo Excel, usando una hoja por fuente.
 
-Soporta proyectos de software (vulnerabilidades via `npm audit`, SonarQube, Uptime Robot, Jira) y fuentes deportivas genéricas via HTTP.
+Soporta proyectos de software (vulnerabilidades via `npm audit`, SonarQube, Uptime Robot, Jira) y fuentes REST genéricas via HTTP.
 
 ## Inicio rápido
 
@@ -24,10 +24,7 @@ Elige un ejemplo y cópialo como `config.json`:
 # Para proyectos de software (Jira, SonarQube, Uptime Robot, vulnerabilidades)
 cp config/config.projects.example.json config/config.json
 
-# Para fútbol (La Liga, Liga Pro)
-cp config/config.football.example.json config/config.json
-
-# Para ambos casos
+# Configuración general
 cp config/config.example.json config/config.json
 ```
 
@@ -73,7 +70,9 @@ Agrega el servidor a tu cliente MCP. Sustituye las credenciales por las tuyas:
 }
 ```
 
-Reinicia Claude Desktop, Cursor o VS Code para que detecte el servidor.
+Reinicia Claude Desktop, Cursor o VS Code para que detecte el servidor. La configuración local conserva el path absoluto `/Users/jonathan.navas/Documents/Desarrollo/MCP/dist/index.js`.
+
+Después de modificar el código, ejecuta `npm run build` desde el directorio del MCP y reinicia o reconecta el servidor MCP. Un proceso MCP activo no recarga automáticamente los cambios de `src/` ni de `dist/`. También puedes ejecutar `npm run start:fresh` manualmente para compilar e iniciar el servidor durante pruebas locales.
 
 ### 5. Usar el MCP
 
@@ -100,6 +99,8 @@ El agente llamará a la tool `collect_project`, el servidor recolectará las fue
    - [Scripts disponibles](#scripts-disponibles)
    - [Herramientas MCP](#herramientas-mcp)
    - [Ejemplo de invocación manual](#ejemplo-de-invocación-manual)
+   - [Uso genérico](#uso-genérico)
+   - [Múltiples proyectos desde variables de entorno](#múltiples-proyectos-desde-variables-de-entorno)
 7. [Configuración del cliente MCP](#configuración-del-cliente-mcp)
    - [Claude Desktop](#claude-desktop)
    - [Cursor](#cursor)
@@ -203,9 +204,10 @@ CONFIG_PATH=./config/config.json
 LOG_LEVEL=info
 NODE_ENV=development
 
-# Fuentes deportivas via HTTP
-FOOTBALL_DATA_API_KEY=tu-football-data-api-key
-LIGA_PRO_API_KEY=tu-liga-pro-api-key
+# Proyectos dinámicos (opcional, reemplaza la sección de projects en config.json)
+# Cada proyecto puede habilitar npm-audit, sonarqube, uptimeRobot y jira.
+# Use apiKeyEnv/emailEnv/baseUrlEnv por fuente para sobrescribir los nombres por defecto de las variables de entorno con credenciales.
+PROJECTS=[{"name":"my-next-app","path":"/workspace/my-next-app","branch":"main","timeToCompare":"6 months","sonarqube":{"enabled":true,"baseUrl":"https://sonarqube.example.com","projectKey":"my-next-app","metrics":["coverage","bugs","vulnerabilities"],"apiKeyEnv":"SONARQUBE_API_KEY"},"uptimeRobot":{"enabled":true,"projectName":"My Next App","apiKeyEnv":"UPTIME_ROBOT_API_KEY"},"jira":{"enabled":true,"projectName":"MN","jql":"project = 'MN' AND status != Done ORDER BY created DESC","apiKeyEnv":"JIRA_API_TOKEN","emailEnv":"JIRA_EMAIL","baseUrlEnv":"JIRA_URL"}},{"name":"api-service","path":"/workspace/api-service","branch":"main","timeToCompare":"6 months"}]
 
 # SonarQube
 SONARQUBE_API_KEY=tu-sonarqube-token
@@ -224,13 +226,10 @@ JIRA_URL=https://tu-dominio.atlassian.net/
 Copia el archivo de ejemplo adecuado:
 
 ```bash
-# Configuración completa (fútbol + proyectos de software)
+# Configuración general
 cp config/config.example.json config/config.json
 
-# Solo fútbol
-cp config/config.football.example.json config/config.json
-
-# Solo proyectos de software
+# Proyectos de software
 cp config/config.projects.example.json config/config.json
 ```
 
@@ -258,7 +257,7 @@ El archivo `config.json` tiene esta estructura general:
 
 | Campo | Descripción |
 |-------|-------------|
-| `outputFile` | Ruta relativa del archivo Excel de salida. |
+| `outputFile` | Ruta relativa del archivo Excel de salida. El directorio padre se crea automáticamente si no existe. |
 | `projects` | Array de proyectos. |
 | `projects[].name` | Nombre del proyecto. Se usa como argumento en `collect_project`. |
 | `projects[].sources` | Fuentes de datos del proyecto. |
@@ -276,7 +275,8 @@ El archivo `config.json` tiene esta estructura general:
 |--------|-------------|
 | `npm run build` | Compila el proyecto TypeScript a `dist/`. |
 | `npm run dev` | Ejecuta el servidor en desarrollo con `tsx`. |
-| `npm start` | Ejecuta el servidor compilado. |
+| `npm start` | Ejecuta el servidor compilado existente. |
+| `npm run start:fresh` | Compila TypeScript y luego inicia el servidor; recomendado para clientes MCP. |
 | `npm run test` | Ejecuta los tests con Vitest. |
 | `npm run format` | Formatea el código con Prettier. |
 | `npm run format:check` | Verifica el formato sin modificar archivos. |
@@ -286,8 +286,8 @@ El archivo `config.json` tiene esta estructura general:
 
 | Tool | Propósito |
 |------|-----------|
-| `collect_project` | Recolecta todas las fuentes habilitadas de un proyecto y escribe el Excel. |
-| `collect_source` | Recolecta una sola fuente de un proyecto. |
+| `collect_project` | Recolecta todas las fuentes habilitadas de un proyecto y escribe el Excel. Ahora acepta `projectPath`, `projectBranch` y `timeToCompare` como overrides dinámicos. |
+| `collect_source` | Recolecta una sola fuente de un proyecto, con overrides opcionales de `projectPath`, `projectBranch` y `timeToCompare`. |
 | `collect_all_projects` | Recolecta todos los proyectos configurados en una sola ejecución. |
 | `get_status` | Muestra el estado del servidor, proyectos y fuentes configuradas. |
 | `validate_config` | Valida que `config.json` y las variables de entorno requeridas estén correctas. |
@@ -318,6 +318,90 @@ Respuesta esperada (resumida):
 }
 ```
 
+### Uso genérico: analizar cualquier proyecto Node.js sin tocar `config.json`
+
+`collect_project` acepta `projectPath`, `projectBranch` y `timeToCompare` como argumentos. Esto permite usar el mismo MCP para analizar cualquier proyecto sin modificar la configuración, siempre que no esté usando la variable de entorno `PROJECTS`.
+
+Ejemplo: analizar un proyecto en una ruta diferente:
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"collect_project","arguments":{"projectName":"my-next-app","projectPath":"/workspace/my-next-app","projectBranch":"main","timeToCompare":"6 months"}}}' \
+  | CONFIG_PATH=./config/config.json node dist/index.js
+```
+
+Si `projectName` no existe en `config.json` ni en `PROJECTS`, el MCP creará automáticamente un proyecto dinámico con una fuente `npm-audit`. Solo necesitas proporcionar `projectPath`.
+
+Ejemplo con Devin:
+
+```text
+Analiza las vulnerabilidades del proyecto my-next-app ubicado en /workspace/my-next-app, rama main.
+```
+
+Devin llamará a `collect_project` con los argumentos dinámicos y generará el Excel.
+
+### Múltiples proyectos desde variables de entorno
+
+Si necesitas analizar varios proyectos sin tocar `config.json`, define la variable de entorno `PROJECTS` con un JSON array. Cada proyecto puede configurar npm audit, SonarQube, Uptime Robot y Jira:
+
+```env
+PROJECTS=[
+  {
+    "name": "my-next-app",
+    "path": "/workspace/my-next-app",
+    "branch": "main",
+    "timeToCompare": "6 months",
+    "sonarqube": {
+      "enabled": true,
+      "baseUrl": "https://sonarqube.example.com",
+      "projectKey": "my-next-app",
+      "branch": "main",
+      "metrics": ["coverage", "bugs", "vulnerabilities"],
+      "apiKeyEnv": "SONARQUBE_API_KEY"
+    },
+    "uptimeRobot": {
+      "enabled": true,
+      "projectName": "My Next App",
+      "apiKeyEnv": "UPTIME_ROBOT_API_KEY"
+    },
+    "jira": {
+      "enabled": true,
+      "projectName": "MN",
+      "jql": "project = 'MN' AND status != Done ORDER BY created DESC",
+      "apiKeyEnv": "JIRA_API_TOKEN",
+      "emailEnv": "JIRA_EMAIL",
+      "baseUrlEnv": "JIRA_URL"
+    }
+  },
+  {
+    "name": "api-service",
+    "path": "/workspace/api-service",
+    "branch": "main",
+    "timeToCompare": "6 months",
+    "npmAudit": { "enabled": true }
+  }
+]
+```
+
+Cuando `PROJECTS` está definida, el MCP la usa en lugar de los proyectos de `config.json`. Cada fuente genera una hoja con el nombre `NombreProyecto - NombreFuente`.
+
+Las credenciales siguen en variables de entorno separadas. Puedes usar los nombres por defecto (`JIRA_API_TOKEN`, `SONARQUBE_API_KEY`, `UPTIME_ROBOT_API_KEY`) o definir nombres específicos por proyecto/fuente usando `apiKeyEnv`, `emailEnv` y `baseUrlEnv`. Nunca pongas valores de secretos dentro del JSON de `PROJECTS`.
+
+Desde Devin:
+
+```text
+Recolecta todos los proyectos y genera el Excel.
+```
+
+Esto llama a `collect_all_projects`, analiza todos los proyectos definidos en `PROJECTS` y escribe una hoja por fuente habilitada.
+
+Para un solo proyecto:
+
+```text
+Analiza el proyecto api-service.
+```
+
 ## Configuración del cliente MCP
 
 Todos los ejemplos usan transporte `stdio` para máxima compatibilidad.
@@ -336,8 +420,6 @@ Edita `claude_desktop_config.json`:
       ],
       "env": {
         "CONFIG_PATH": "/Users/jonathan.navas/Documents/Desarrollo/MCP/config/config.json",
-        "FOOTBALL_DATA_API_KEY": "...",
-        "LIGA_PRO_API_KEY": "...",
         "SONARQUBE_API_KEY": "...",
         "UPTIME_ROBOT_API_KEY": "...",
         "JIRA_API_TOKEN": "...",
@@ -398,13 +480,58 @@ Edita `.vscode/mcp.json`:
 
 ### Devin
 
-Configura el MCP en `~/.config/devin/mcp_config.json` o en el archivo `mcp.json` del proyecto con el mismo esquema de `command`, `args` y `env`.
+Configura el MCP en `~/.config/devin/mcp_config.json` (nivel usuario) o `.devin/mcp_config.json` (nivel proyecto).
+
+Ejemplo para usar el MCP de forma genérica desde cualquier proyecto en Devin:
+
+```json
+{
+  "mcpServers": {
+    "project-excel-mcp": {
+      "command": "node",
+      "args": [
+        "/Users/jonathan.navas/Documents/Desarrollo/MCP/dist/index.js"
+      ],
+      "env": {
+        "CONFIG_PATH": "/workspace/mcp-pruebas/config/config.json",
+        "PROJECTS": "[{\"name\":\"my-next-app\",\"path\":\"/workspace/my-next-app\",\"branch\":\"main\",\"timeToCompare\":\"6 months\",\"sonarqube\":{\"enabled\":true,\"baseUrl\":\"https://sonarqube.example.com\",\"projectKey\":\"my-next-app\",\"metrics\":[\"coverage\",\"bugs\",\"vulnerabilities\"],\"apiKeyEnv\":\"SONARQUBE_API_KEY\"},\"uptimeRobot\":{\"enabled\":true,\"projectName\":\"My Next App\",\"apiKeyEnv\":\"UPTIME_ROBOT_API_KEY\"},\"jira\":{\"enabled\":true,\"projectName\":\"MN\",\"jql\":\"project = 'MN' AND status != Done ORDER BY created DESC\",\"apiKeyEnv\":\"JIRA_API_TOKEN\",\"emailEnv\":\"JIRA_EMAIL\",\"baseUrlEnv\":\"JIRA_URL\"}},{\"name\":\"api-service\",\"path\":\"/workspace/api-service\",\"branch\":\"main\",\"timeToCompare\":\"6 months\"}]",
+        "JIRA_API_TOKEN": "...",
+        "JIRA_EMAIL": "...",
+        "JIRA_URL": "https://qphcorp.atlassian.net/",
+        "SONARQUBE_API_KEY": "...",
+        "UPTIME_ROBOT_API_KEY": "...",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
+```
+
+Con esta configuración puedes pedir simplemente:
+
+```text
+Recolecta todos los proyectos y genera el Excel.
+```
+
+El MCP usará `PROJECTS` desde la variable de entorno para analizar todos los proyectos configurados. También puedes pedir un proyecto específico desde el chat:
+
+```text
+Analiza el proyecto api-service.
+```
+
+También puedes usar el CLI de Devin:
+
+```bash
+devin mcp add project-excel-mcp -- node /Users/jonathan.navas/Documents/Desarrollo/MCP/dist/index.js
+```
+
+Y luego editas el archivo generado para agregar las variables de entorno.
 
 ## Fuentes de datos soportadas
 
 | Tipo | Descripción | Requiere credenciales |
 |------|-------------|-----------------------|
-| `http` | Fuente REST genérica (fútbol, APIs propias). | Depende de la URL. |
+| `http` | Fuente REST genérica (APIs propias). | Depende de la URL. |
 | `file` | Archivo local JSON o CSV. | No. |
 | `npm-audit` | Análisis de vulnerabilidades de un proyecto Node.js. | No. |
 | `sonarqube` | Métricas de calidad de SonarQube. | Sí (`SONARQUBE_API_KEY`). |
@@ -413,7 +540,7 @@ Configura el MCP en `~/.config/devin/mcp_config.json` o en el archivo `mcp.json`
 
 ### HTTP genérico
 
-Ideal para APIs deportivas o cualquier servicio REST. Requiere `url`, `method`, `fieldMapping` y opcionalmente `apiKeyEnv` / `apiKeyHeader`.
+Ideal para APIs propias o servicios REST de terceros. Requiere `url`, `method`, `fieldMapping` y opcionalmente `apiKeyEnv` / `apiKeyHeader`.
 
 ### Archivo local
 

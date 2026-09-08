@@ -1,10 +1,23 @@
 import { z } from "zod"
 
 export const collectProjectShape = {
-  projectName: z
+  projectName: z.string().min(1).describe("Name of the project to analyze"),
+  projectPath: z
     .string()
-    .min(1)
-    .describe("Name of the project configured in config.json"),
+    .optional()
+    .describe(
+      "Optional override for the project path. Required if the project is not configured in config.json"
+    ),
+  projectBranch: z
+    .string()
+    .optional()
+    .describe("Optional override for the Git branch to validate"),
+  timeToCompare: z
+    .string()
+    .optional()
+    .describe(
+      "Optional override for the maintenance comparison window (e.g. '6 months')"
+    ),
   outputFile: z
     .string()
     .optional()
@@ -12,11 +25,22 @@ export const collectProjectShape = {
 }
 
 export const collectSourceShape = {
-  projectName: z
-    .string()
-    .min(1)
-    .describe("Name of the project configured in config.json"),
+  projectName: z.string().min(1).describe("Name of the project to analyze"),
   sourceId: z.string().min(1).describe("ID of the source to collect"),
+  projectPath: z
+    .string()
+    .optional()
+    .describe("Optional override for the project path"),
+  projectBranch: z
+    .string()
+    .optional()
+    .describe("Optional override for the Git branch to validate"),
+  timeToCompare: z
+    .string()
+    .optional()
+    .describe(
+      "Optional override for the maintenance comparison window (e.g. '6 months')"
+    ),
   outputFile: z
     .string()
     .optional()

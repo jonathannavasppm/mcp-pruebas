@@ -36,28 +36,17 @@ export interface CollectedResult {
   errors: string[]
 }
 
-export interface FootballMatchRow extends RowData {
-  competition: string
-  matchDate: string
-  homeTeam: string
-  awayTeam: string
-  homeScore: number | null
-  awayScore: number | null
-  status: string
-  sourceUrl: string
-}
-
 export interface DependencyRow extends RowData {
   packageName: string
   dependencyType:
     "dependency" | "devDependency" | "optionalDependency" | "peerDependency"
-  installedVersion: string
   currentVersion: string | null
   latestVersion: string | null
   isUpToDate: boolean
   isDeprecated: boolean
   hasVulnerabilities: boolean
-  vulnerabilitySeverity: "low" | "moderate" | "high" | "critical" | null
+  vulnerabilitySeverity:
+    "low" | "moderate" | "high" | "critical" | "unknown" | null
   lastPublishedDate: string | null
   maintenanceStatus: "ok" | "outdated" | "deprecated" | "unmaintained" | null
   advisoryUrl: string | null
