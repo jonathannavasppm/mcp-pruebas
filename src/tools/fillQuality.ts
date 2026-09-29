@@ -1,77 +1,83 @@
 import type { ToolResponse } from "../types.js"
-import type { AppConfigOutput } from "../config/schema.js"
+import type { AppConfigOutput, SourceConfigOutput } from "../config/schema.js"
 import { collectSource } from "../services/dataCollector.js"
 import {
   mapSonarMetricsToQuality,
   writeQualityToTemplate,
 } from "../services/templateWriter.js"
 import type { QualityData } from "../services/templateWriter.js"
-import { McpAppError } from "../utils/errors.js"
 import { appendFarewell } from "../utils/farewell.js"
 import { logger } from "../utils/logger.js"
-import {
-  hasProjectsEnvOverride,
-  resolveProjectFromEnv,
-  resolveProjectsFromEnv,
-} from "./projectResolver.js"
+
+const QUALITY_METRICS = [
+  "alert_status",
+  "sqale_rating",
+  "sqale_debt_ratio",
+  "coverage",
+  "reliability_rating",
+  "vulnerabilities",
+]
+
+interface RepoInput {
+  projectKey: string
+  baseUrl: string
+  branch: string
+  apiKeyEnv?: string
+}
 
 type FillQualityArgs = {
   templatePath: string
-  projectNames: string[]
+  repos: RepoInput[]
+}
+
+function buildSonarSource(repo: RepoInput): SourceConfigOutput {
+  return {
+    id: `sonar-${repo.projectKey}`,
+    sheetName: `SonarQube-${repo.projectKey}`,
+    type: "sonarqube",
+    enabled: true,
+    config: {
+      baseUrl: repo.baseUrl,
+      projectKey: repo.projectKey,
+      branch: repo.branch,
+      metrics: QUALITY_METRICS,
+      ...(repo.apiKeyEnv ? { apiKeyEnv: repo.apiKeyEnv } : {}),
+    },
+  }
 }
 
 export async function fillQuality(
   args: FillQualityArgs,
-  config: AppConfigOutput
+  _config: AppConfigOutput
 ): Promise<ToolResponse> {
   const repos: QualityData[] = []
   const errors: string[] = []
 
-  for (const projectName of args.projectNames) {
-    const project = hasProjectsEnvOverride()
-      ? resolveProjectFromEnv(projectName)
-      : config.projects.find((p) => p.name === projectName)
-
-    if (!project) {
-      errors.push(`Project "${projectName}" not found in configuration.`)
-      continue
-    }
-
-    const sonarSource = project.sources.find(
-      (s) => s.type === "sonarqube" && s.enabled
-    )
-
-    if (!sonarSource) {
-      errors.push(
-        `Project "${projectName}" has no enabled sonarqube source.`
-      )
-      continue
-    }
+  for (const repo of args.repos) {
+    const source = buildSonarSource(repo)
 
     try {
-      const rows = await collectSource(projectName, sonarSource)
+      const rows = await collectSource(repo.projectKey, source)
       const metrics = rows.map((r) => ({
         metric: String(r.metric),
         value: r.value as string | number,
       }))
 
-      const cfg = sonarSource.config as Record<string, unknown>
       const quality = mapSonarMetricsToQuality(
         metrics,
-        String(cfg.projectKey ?? projectName),
-        String(cfg.branch ?? "main")
+        repo.projectKey,
+        repo.branch
       )
-
       repos.push(quality)
 
       logger.info(
-        { projectName, metricsCollected: metrics.length },
+        { projectKey: repo.projectKey, metricsCollected: metrics.length },
         "SonarQube metrics collected for quality template"
       )
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown error"
-      errors.push(`Project "${projectName}": ${message}`)
+      errors.push(`Repo "${repo.projectKey}": ${message}`)
     }
   }
 

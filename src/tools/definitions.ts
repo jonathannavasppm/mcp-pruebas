@@ -54,16 +54,28 @@ export const collectAllProjectsShape = {
     .describe("Optional override for output path"),
 }
 
+const sonarRepoSchema = z.object({
+  projectKey: z.string().min(1).describe("SonarQube project key"),
+  baseUrl: z.string().min(1).describe("SonarQube base URL"),
+  branch: z.string().min(1).describe("Branch to analyze"),
+  apiKeyEnv: z
+    .string()
+    .optional()
+    .describe(
+      "Environment variable name for the API key (defaults to SONARQUBE_API_KEY)"
+    ),
+})
+
 export const fillQualityShape = {
   templatePath: z
     .string()
     .min(1)
     .describe("Absolute path to the KPI Excel template to fill"),
-  projectNames: z
-    .array(z.string().min(1))
+  repos: z
+    .array(sonarRepoSchema)
     .min(1)
     .describe(
-      "List of project names whose SonarQube data will fill the quality tab (one column per project)"
+      "List of SonarQube repos to analyze. Each repo fills one column (B, C, D...) in the quality tab"
     ),
 }
 
