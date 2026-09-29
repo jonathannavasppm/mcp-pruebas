@@ -40,7 +40,7 @@ export function mapSonarMetricsToQuality(
   projectKey: string,
   branch: string
 ): QualityData {
-  const data: QualityData = { projectKey, branch }
+  const data: QualityData = { projectKey, branch, analysisDate: new Date().toISOString() }
 
   for (const m of metrics) {
     const val = String(m.value)
@@ -119,7 +119,12 @@ export async function writeQualityToTemplate(
     if (repo.reliabilityRating) {
       setCellValue(ws, 14, col, repo.reliabilityRating)
     }
-    // Row 15 is a formula — skip
+    // Row 15: Reliability Score formula
+    const colLetter = String.fromCharCode(64 + col) // B=66-64=2 → 'B', C=67-64=3 → 'C'
+    const cell15 = ws.getCell(15, col)
+    if (!cell15.value || !(typeof cell15.value === "object" && "formula" in cell15.value)) {
+      cell15.value = { formula: `IF(${colLetter}14="A",1,IF(${colLetter}14="B",0.8,IF(${colLetter}14="C",0.6,IF(${colLetter}14="D",0.4,IF(${colLetter}14="E",0.2,0)))))` } as any
+    }
     if (repo.vulnerabilities) {
       setCellValue(ws, 16, col, parseInt(repo.vulnerabilities, 10))
     }
