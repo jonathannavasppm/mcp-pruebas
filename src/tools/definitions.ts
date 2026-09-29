@@ -54,6 +54,19 @@ export const collectAllProjectsShape = {
     .describe("Optional override for output path"),
 }
 
+export const fillQualityShape = {
+  templatePath: z
+    .string()
+    .min(1)
+    .describe("Absolute path to the KPI Excel template to fill"),
+  projectNames: z
+    .array(z.string().min(1))
+    .min(1)
+    .describe(
+      "List of project names whose SonarQube data will fill the quality tab (one column per project)"
+    ),
+}
+
 export const emptyShape = {}
 
 export const COLLECT_PROJECT_TOOL = "collect_project"
@@ -61,3 +74,4 @@ export const COLLECT_SOURCE_TOOL = "collect_source"
 export const COLLECT_ALL_PROJECTS_TOOL = "collect_all_projects"
 export const GET_STATUS_TOOL = "get_status"
 export const VALIDATE_CONFIG_TOOL = "validate_config"
+export const FILL_QUALITY_TOOL = "fill_quality"

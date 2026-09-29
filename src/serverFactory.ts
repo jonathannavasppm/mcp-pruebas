@@ -9,9 +9,11 @@ import {
   COLLECT_ALL_PROJECTS_TOOL,
   GET_STATUS_TOOL,
   VALIDATE_CONFIG_TOOL,
+  FILL_QUALITY_TOOL,
   collectProjectShape,
   collectSourceShape,
   collectAllProjectsShape,
+  fillQualityShape,
   emptyShape,
 } from "./tools/definitions.js"
 import { collectProject } from "./tools/collectProject.js"
@@ -19,6 +21,7 @@ import { collectSource } from "./tools/collectSource.js"
 import { collectAllProjects } from "./tools/collectAllProjects.js"
 import { getStatus } from "./tools/getStatus.js"
 import { validateConfig } from "./tools/validateConfig.js"
+import { fillQuality } from "./tools/fillQuality.js"
 
 const rateLimiter = new RateLimiter()
 
@@ -121,6 +124,24 @@ export function createServer(config: AppConfigOutput): McpServer {
         return validateConfig(config)
       } catch (error) {
         logger.error({ error }, "validate_config failed")
+        return errorToToolResponse(error)
+      }
+    }
+  )
+
+  server.registerTool(
+    FILL_QUALITY_TOOL,
+    {
+      description:
+        "Fill the KPI3 quality tab in a KPI Excel template with SonarQube metrics from one or more projects.",
+      inputSchema: fillQualityShape,
+    },
+    async (args) => {
+      try {
+        rateLimiter.check(FILL_QUALITY_TOOL)
+        return await fillQuality(args, config)
+      } catch (error) {
+        logger.error({ error }, "fill_quality failed")
         return errorToToolResponse(error)
       }
     }

@@ -8,3 +8,4 @@ config/config.json
 output/
 coverage/
 *.xlsx
+CLAUDE.md
